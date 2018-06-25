@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.27703.2026
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "e6PollerBot", "e6PollerBot\e6PollerBot.csproj", "{381B16A5-8590-4C0A-9680-59F5AE49AE19}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "e6PollerBot", "e6PollerBot\e6PollerBot.csproj", "{381B16A5-8590-4C0A-9680-59F5AE49AE19}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
