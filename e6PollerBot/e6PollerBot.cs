@@ -1,102 +1,54 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using e6PollerBot.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System;
-using System.Reflection;
+using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace e6PollerBot
 {
     class e6PollerBot
     {
-        static void Main(string[] args) => new e6PollerBot().RunBotAsync(args).GetAwaiter().GetResult();
+        static void Main(string[] args)
+            => new e6PollerBot().MainAsync(args).GetAwaiter().GetResult();
 
-        public static readonly string[] _prefixes = { "!pb ", ".pb ", "$pb ", "&pb ", "!pb", ".pb", "$pb", "&pb"};
-
-        private static string _botToken;
-        private DiscordSocketClient _client;
-        private CommandService _commands;
-        private IServiceProvider _services;
-
-        public async Task RunBotAsync(string[] args)
+        public async Task MainAsync(string[] args)
         {
-            _client = new DiscordSocketClient();
-            _commands = new CommandService();
+            IServiceProvider services = ConfigureServices();
+            DiscordSocketClient client = services.GetRequiredService<DiscordSocketClient>();
 
-            _services = new ServiceCollection()
-                .AddSingleton(_client)
-                .AddSingleton(_commands)
-                .BuildServiceProvider();
+            // Register Logging
+            client.Log += LogAsync;
+            services.GetRequiredService<CommandService>().Log += LogAsync;
 
-            _botToken = args[0];
+            // Login Bot.
+            await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN"));
+            await client.StartAsync();
 
-            // Event Subscriptions
-            _client.Log += Log;
+            // Register all other Services.
+            await services.GetRequiredService<CommandHandlingService>().InitializeAsync();
 
-            await RegisterCommandsAsync();
-
-            await _client.LoginAsync(TokenType.Bot, _botToken);
-
-            await _client.StartAsync();
-
+            // Sleep the main thread of execution forever.
             await Task.Delay(-1);
         }
 
-        private Task Log(LogMessage arg)
+        private Task LogAsync(LogMessage log)
         {
-            Console.WriteLine(arg);
-
+            Console.WriteLine(log.ToString());
             return Task.CompletedTask;
         }
 
-        public async Task RegisterCommandsAsync()
+        private IServiceProvider ConfigureServices()
         {
-            _client.MessageReceived += HandleCommandAsync;
-
-            await _commands.AddModulesAsync(Assembly.GetEntryAssembly());
-        }
-
-        private bool PrefixChecker(SocketUserMessage message, ref int argPos)
-        {
-            foreach (string prefix in _prefixes)
-            {
-                if (message.HasStringPrefix(prefix, ref argPos))
-                {
-                    return true;
-                }
-            }
-
-            if (message.HasMentionPrefix(_client.CurrentUser, ref argPos))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private async Task HandleCommandAsync(SocketMessage arg)
-        {
-            SocketUserMessage message = arg as SocketUserMessage;
-
-            if (message is null || message.Author.IsBot)
-            {
-                return;
-            }
-
-            int argPos = 0;
-
-            if (PrefixChecker(message, ref argPos))
-            {
-                SocketCommandContext context = new SocketCommandContext(_client, message);
-
-                IResult result = await _commands.ExecuteAsync(context, argPos, _services);
-
-                if (!result.IsSuccess)
-                {
-                    Console.WriteLine(result.ErrorReason);
-                }
-            }
+            return new ServiceCollection()
+                .AddSingleton<DiscordSocketClient>()
+                .AddSingleton<CommandService>()
+                .AddSingleton<CommandHandlingService>()
+                .AddSingleton<HttpClient>()
+                .AddSingleton<e6Service>()
+                .BuildServiceProvider();
         }
     }
 }
