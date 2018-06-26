@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -17,7 +18,7 @@ namespace e6PollerBot.Services
         private SemaphoreSlim _mutex = new SemaphoreSlim(1);
 
         private readonly HttpClient _http;
-        private static readonly string _random_limit = "100";
+        private static readonly int _random_limit = 100;
 
         public e6Service(HttpClient http)
         {
@@ -29,12 +30,18 @@ namespace e6PollerBot.Services
 
         public async Task<string> GetRandomPicture(string tags)
         {
+            List<e6Post> result;
             string query_string = $"https://e621.net/post/index.json?tags={tags}&limit={_random_limit}";
             await _mutex.WaitAsync().ConfigureAwait(false);
-            HttpResponseMessage response;
             try
             {
-                response = await _http.GetAsync(query_string);
+                using (Stream s = await _http.GetStreamAsync(query_string))
+                using (StreamReader sr = new StreamReader(s))
+                using (JsonReader reader = new JsonTextReader(sr))
+                {
+                    JsonSerializer serializer = new JsonSerializer();
+                    result = await Task.Run(() => serializer.Deserialize<List<e6Post>>(reader));
+                }
             }
             finally
             {
@@ -47,22 +54,11 @@ namespace e6PollerBot.Services
                     _mutex.Release();
                 }
             }
-
-            string response_string = await response.Content.ReadAsStringAsync();
-   
-            string[] ids = parse_response(response_string);
+            string[] ids = result.Select(x => x.id).ToArray();
             int random_index = await get_random(0, ids.Count());
 
             string return_string = $"https://e621.net/post/show/{ids[random_index]}";
             return return_string;
-        }
-
-        private string[] parse_response(string response_string)
-        {
-            List<e6Post> result = JsonConvert.DeserializeObject<List<e6Post>>(response_string);
-
-            string[] ids = result.Select(x => x.id).ToArray();
-            return ids;
         }
 
         private async Task<int> get_random(int minValue, int maxValue)
