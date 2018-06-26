@@ -1,5 +1,4 @@
-﻿using e6PollerBot.Extensions;
-using e6PollerBot.Models;
+﻿using e6PollerBot.Models;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
