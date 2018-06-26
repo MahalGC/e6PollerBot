@@ -12,7 +12,7 @@ namespace e6PollerBot
     {
         static void Main(string[] args) => new e6PollerBot().RunBotAsync(args).GetAwaiter().GetResult();
 
-        public static readonly string[] _prefixes = {"!pb", ".pb", "$pb", "&pb", "!pb ", ".pb ", "$pb ", "&pb " };
+        public static readonly string[] _prefixes = { "!pb ", ".pb ", "$pb ", "&pb ", "!pb", ".pb", "$pb", "&pb"};
 
         private static string _botToken;
         private DiscordSocketClient _client;

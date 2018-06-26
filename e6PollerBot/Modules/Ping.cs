@@ -9,9 +9,9 @@ namespace e6PollerBot.Modules
     public class Ping : ModuleBase<SocketCommandContext>
     {
         [Command("ping")]
-        public async Task PingAsync()
+        public async Task PingAsync([Remainder] string arg = null)
         {
-            await ReplyAsync("pong");
+            await ReplyAsync($"{arg} pong");
         }
     }
 }
