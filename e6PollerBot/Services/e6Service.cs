@@ -12,69 +12,68 @@ namespace e6PollerBot.Services
 {
     public class e6Service
     {
-        private static Random _rand;
-        private SemaphoreSlim _random_guard = new SemaphoreSlim(1);
-
-        private SemaphoreSlim _mutex = new SemaphoreSlim(1);
+        private SemaphoreSlim _e6_throttle_guard = new SemaphoreSlim(1);
 
         private readonly HttpClient _http;
-        private static readonly int _random_limit = 100;
+        private static readonly int _random_limit = 300;
+        private static readonly int _throttle_timing = 1000; // Miliseconds to wait between e6 API calls.
+
+        private static readonly string _e6_show_post_base_url = "https://e621.net/post/show";
 
         public e6Service(HttpClient http)
         {
             _http = http;
             _http.DefaultRequestHeaders.Add("User-Agent", "Discord e6PollerBot/1.0 (by nekofelix on e621)");
-            _rand = new Random();
         }
-           
 
+        // Get a random picture from e6.
         public async Task<string> GetRandomPicture(string tags)
         {
-            List<e6Post> result;
-            string query_string = $"https://e621.net/post/index.json?tags={tags}&limit={_random_limit}";
-            await _mutex.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                using (Stream s = await _http.GetStreamAsync(query_string))
-                using (StreamReader sr = new StreamReader(s))
-                using (JsonReader reader = new JsonTextReader(sr))
-                {
-                    JsonSerializer serializer = new JsonSerializer();
-                    result = await Task.Run(() => serializer.Deserialize<List<e6Post>>(reader));
-                }
-            }
-            finally
-            {
-                try
-                {
-                    await Task.Delay(1000);
-                }
-                finally
-                {
-                    _mutex.Release();
-                }
-            }
-            string[] ids = result.Select(x => x.id).ToArray();
+            List<e6Post> e6Posts = await Querye6ByTag(tags, _random_limit);
+            List<string> ids = e6Posts.Select(x => x.id).ToList();
             if (ids.Count() == 0) return "No posts matched your search.";
-            int random_index = await get_random(0, ids.Count());
 
-            string return_string = $"https://e621.net/post/show/{ids[random_index]}";
+            int random_index = RandomThreadSafe.Next(0, ids.Count());
+            string return_string = $"{_e6_show_post_base_url}/{ids[random_index]}";
             return return_string;
         }
 
-        private async Task<int> get_random(int minValue, int maxValue)
+        // Query the GET e6 Posts List API
+        private async Task<List<e6Post>> Querye6ByTag(string tags, int limit)
         {
-            int num;
-            await _mutex.WaitAsync().ConfigureAwait(false);
+            string query_string = $"https://e621.net/post/index.json?tags={tags}&limit={_random_limit}";
+            List<e6Post> e6Posts = await Gete6(query_string);
+            return e6Posts;
+        }
+
+        // GET from e6 API.
+        private async Task<List<e6Post>> Gete6(string url)
+        {
+            await e6Throttle();
+
+            List<e6Post> e6Posts;
+            using (Stream s = await _http.GetStreamAsync(url))
+            using (StreamReader sr = new StreamReader(s))
+            using (JsonReader reader = new JsonTextReader(sr))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                e6Posts = await Task.Run(() => serializer.Deserialize<List<e6Post>>(reader));
+            }
+            return e6Posts;
+        }
+
+        // Any calls to the e6 API should be throttled.
+        private async Task e6Throttle()
+        {
+            await _e6_throttle_guard.WaitAsync().ConfigureAwait(false);
             try
             {
-                num = _rand.Next(minValue, maxValue);
+                await Task.Delay(_throttle_timing);
             }
             finally
             {
-                _mutex.Release();
+                _e6_throttle_guard.Release();
             }
-            return num;
         }
     }
 }

@@ -10,11 +10,11 @@ namespace e6PollerBot.Modules
         // Dependency Injection will fill this value in for us
         public e6Service e6Service { get; set; }
 
-        [Command("random")]
+        [Command("random", RunMode = RunMode.Async)]
         public async Task Random([Remainder] string arg = null)
         {
-            string random_url = await e6Service.GetRandomPicture(arg);
-            await ReplyAsync(random_url);
+            string random_picture_data = await Task.Run(() => e6Service.GetRandomPicture(arg));
+            await ReplyAsync(random_picture_data);
         }
     }
 }
