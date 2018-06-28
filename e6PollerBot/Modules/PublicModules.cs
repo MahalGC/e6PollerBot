@@ -16,5 +16,12 @@ namespace e6PollerBot.Modules
             string random_url = await e6Service.GetRandomPicture(arg);
             await ReplyAsync(random_url);
         }
+
+        [Command("your purpose is to download porn")]
+        public async Task WhatIsMyPurpose([Remainder] string arg = null)
+        {
+            await ReplyAsync("*looks down, horrified* oh, my, god.");
+        }
+
     }
 }
