@@ -55,6 +55,7 @@ namespace e6PollerBot.Services
                 }
             }
             string[] ids = result.Select(x => x.id).ToArray();
+            if (ids.Count() == 0) return "No posts matched your search.";
             int random_index = await get_random(0, ids.Count());
 
             string return_string = $"https://e621.net/post/show/{ids[random_index]}";
