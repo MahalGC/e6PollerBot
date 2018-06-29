@@ -9,7 +9,7 @@ namespace e6PollerBot.Models
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Server=(localdb)\mssqllocaldb;Database=e6PollerBot.TestDb8;Trusted_Connection=True;");
+            optionsBuilder.UseSqlServer(Environment.GetEnvironmentVariable("DATABASE_CONNECTION_STRING"));
         }
     }
 }
