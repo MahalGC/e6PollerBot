@@ -63,6 +63,7 @@ namespace e6PollerBot.Modules
                 {
                     await ReplyAsync(replyString);
                     replyString = "";
+                    counter = 0;
                 }
             }
 
@@ -101,7 +102,7 @@ namespace e6PollerBot.Modules
             bool isSuccessful = await e6Service.DeleteSubscription(sub_to_delete: sub_to_delete, userId: Context.User.Id);
             if (isSuccessful)
             {
-                await ReplyAsync($"<@!{Context.User.Id}>, you have successfully deleted Subscription Number [{sub_to_delete}]");
+                await ReplyAsync($"<@!{Context.User.Id}>, you have successfully deleted Subscription Number [{sub_to_delete}].");
             }
             else
             {

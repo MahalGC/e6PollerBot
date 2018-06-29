@@ -48,7 +48,6 @@ namespace e6PollerBot
                 .AddSingleton<CommandHandlingService>()
                 .AddSingleton<HttpClient>()
                 .AddSingleton<e6Service>()
-                .AddSingleton<DatabaseService>()
                 .BuildServiceProvider();
         }
     }

@@ -1,4 +1,5 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using e6PollerBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
@@ -14,30 +15,37 @@ namespace e6PollerBot.Services
 {
     public class e6Service
     {
-        private SemaphoreSlim _e6_throttle_guard = new SemaphoreSlim(1);
-
-        private readonly HttpClient _http;
-        private static readonly int _random_limit = 300;
+        private static readonly int _max_reply_list_lines = 5; // Max number of lines in one post.
+        private static readonly int _query_limit = 300; // Maximum number of e6 Posts to search for in one call.
         private static readonly int _throttle_timing = 1000; // Miliseconds to wait between e6 API calls.
-        private static readonly int _max_search_query_size = 200;
+        private static readonly int _max_search_query_character_size = 200; // Maximum character limit for Searches.
+        private static readonly int _poller_thread_latency = 1000; // Miliseconds to wait before trying again with the Poller Thread.
 
         private static readonly string _e6_show_post_base_url = "https://e621.net/post/show";
 
+        private readonly HttpClient _http;
         private DiscordSocketClient _client;
+        private Task _pollerThread;
+
+        private SemaphoreSlim _e6_throttle_guard = new SemaphoreSlim(1);
 
         public e6Service(HttpClient http, DiscordSocketClient client)
         {
             _http = http;
-            _http.DefaultRequestHeaders.Add("User-Agent", "Discord e6PollerBot/1.0 (by nekofelix on e621)");
+            _http.DefaultRequestHeaders.Add("User-Agent", Environment.GetEnvironmentVariable("USER_AGENT_HEADER"));
             _client = client;
+
+            _pollerThread = Task.Factory.StartNew(() => this.PollerThread(), TaskCreationOptions.LongRunning);
         }
 
         // Subscribe via Private Message / Direct Message (PM/DM)
         public async Task<bool> SubscribeIsPrivate(string searchQuery, ulong userId)
         {
-            if (searchQuery.Count() >= _max_search_query_size) return false;
+            if (searchQuery.Count() > _max_search_query_character_size) return false;
 
             Subscription subscription = new Subscription();
+            subscription.IsNew = true;
+            subscription.IsActive = true;
             subscription.SearchQuery = searchQuery;
             subscription.IsPrivate = true;
             subscription.UserId = userId;
@@ -53,9 +61,11 @@ namespace e6PollerBot.Services
         // Subscribe via Guild Channel / Server Channel
         public async Task<bool> SubscribeNotPrivate(string searchQuery, ulong userId, ulong channelId, ulong guildId)
         {
-            if (searchQuery.Count() >= _max_search_query_size) return false;
+            if (searchQuery.Count() > _max_search_query_character_size) return false;
 
             Subscription subscription = new Subscription();
+            subscription.IsNew = true;
+            subscription.IsActive = true;
             subscription.SearchQuery = searchQuery;
             subscription.IsPrivate = false;
             subscription.UserId = userId;
@@ -78,7 +88,7 @@ namespace e6PollerBot.Services
             List<Subscription> subscriptions;
             using (PollerBotDbContext dbcontext = new PollerBotDbContext())
             {
-                subscriptions = await dbcontext.Subscriptions.Include(s1 => s1.e6PostSubscriptions).Where(s2 => s2.UserId == userId).OrderBy(s3 => s3.SubscriptionId).ToListAsync();
+                subscriptions = await dbcontext.Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.SubscriptionId).ToListAsync();
             }
 
             foreach (Subscription subscription in subscriptions)
@@ -110,7 +120,7 @@ namespace e6PollerBot.Services
             List<Subscription> subscriptions;
             using (PollerBotDbContext dbcontext = new PollerBotDbContext())
             {
-                subscriptions = await dbcontext.Subscriptions.Include(s1 => s1.e6PostSubscriptions).Where(s2 => s2.UserId == userId).OrderBy(s3 => s3.SubscriptionId).ToListAsync();
+                subscriptions = await dbcontext.Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.SubscriptionId).ToListAsync();
                 if (sub_to_delete >= subscriptions.Count())
                 {
                     isSuccessful = false;
@@ -119,7 +129,8 @@ namespace e6PollerBot.Services
                 {
                     try
                     {
-                        dbcontext.Subscriptions.Remove(subscriptions[sub_to_delete]);
+                        subscriptions[sub_to_delete].IsActive = false;
+                        dbcontext.Subscriptions.Update(subscriptions[sub_to_delete]);
                         await dbcontext.SaveChangesAsync();
                     }
                     catch (Exception)
@@ -135,7 +146,9 @@ namespace e6PollerBot.Services
         // Get a random picture from e6.
         public async Task<string> GetRandomPicture(string tags)
         {
-            List<e6Post> e6Posts = await Querye6ByTag(tags, _random_limit);
+            if (tags.Count() > _max_search_query_character_size) return $"Character limit of {_max_search_query_character_size} exceeded! You have input ${tags.Count()} characters.";
+
+            List<e6Post> e6Posts = await Querye6ByTag(tags, _query_limit);
             List<int> ids = e6Posts.Select(x => x.id).ToList();
             if (ids.Count() == 0) return "No posts matched your search.";
 
@@ -147,7 +160,7 @@ namespace e6PollerBot.Services
         // Query the GET e6 Posts List API
         private async Task<List<e6Post>> Querye6ByTag(string tags, int limit)
         {
-            string query_string = $"https://e621.net/post/index.json?tags={tags}&limit={_random_limit}";
+            string query_string = $"https://e621.net/post/index.json?tags={tags}&limit={_query_limit}";
             List<e6Post> e6Posts = await Gete6(query_string);
             return e6Posts;
         }
@@ -179,6 +192,93 @@ namespace e6PollerBot.Services
             finally
             {
                 _e6_throttle_guard.Release();
+            }
+        }
+
+        // Poll e6 Periodically.
+        private async Task PollerThread()
+        {
+            while (true)
+            {
+                try
+                {
+                    using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+                    {
+                        List<Subscription> subscriptions = await dbcontext.Subscriptions.Where(s => s.IsActive == true).ToListAsync();
+
+                        foreach(Subscription subscription in subscriptions)
+                        {
+                            if (subscription.IsNew)
+                            {
+                                List<e6Post> e6PostsRaw = await Querye6ByTag(subscription.SearchQuery, _query_limit);
+                                HashSet<int> e6PostIds = e6PostsRaw.Select(x => x.id).ToHashSet();
+                                subscription.e6Posts = e6PostIds;
+                                subscription.IsNew = false;
+                                dbcontext.Subscriptions.Update(subscription);
+                                await dbcontext.SaveChangesAsync();
+                            }
+                            else
+                            {
+                                List<e6Post> e6PostsRaw = await Querye6ByTag(subscription.SearchQuery, _query_limit);
+                                HashSet<int> e6PostIds = e6PostsRaw.Select(x => x.id).ToHashSet();
+                                IEnumerable<int> newIds = e6PostIds.Except(subscription.e6Posts);
+
+                                await SendUpdates(subscription: subscription, newIds: newIds);
+
+                                subscription.e6Posts.UnionWith(newIds);
+                                dbcontext.Subscriptions.Update(subscription);
+                                await dbcontext.SaveChangesAsync();
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+                finally
+                {
+                    Thread.Sleep(_poller_thread_latency);
+                }
+            }
+        }
+
+        private async Task SendUpdates(Subscription subscription, IEnumerable<int> newIds)
+        {
+            if (!newIds.Any()) return;
+            string replyString = $"Hello <@!{subscription.UserId}>! You have an Update for [{subscription.SearchQuery}]!";
+            int counter = 1;
+            foreach (int id in newIds)
+            {
+                replyString = $"{replyString}\n{_e6_show_post_base_url}/{id}";
+                counter++;
+                if (counter >= _max_reply_list_lines)
+                {
+                    if (subscription.IsPrivate)
+                    {
+                        IDMChannel channel = await _client.GetUser(subscription.UserId).GetOrCreateDMChannelAsync();
+                        await channel.SendMessageAsync(replyString);
+                    }
+                    else
+                    {
+                        await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
+                    }
+                    replyString = "";
+                    counter = 0;
+                }
+            }
+
+            if (!String.IsNullOrWhiteSpace(replyString))
+            {
+                if (subscription.IsPrivate)
+                {
+                    IDMChannel channel = await _client.GetUser(subscription.UserId).GetOrCreateDMChannelAsync();
+                    await channel.SendMessageAsync(replyString);
+                }
+                else
+                {
+                    await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
+                }
             }
         }
     }
