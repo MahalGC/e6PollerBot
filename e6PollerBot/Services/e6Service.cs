@@ -1,6 +1,6 @@
-﻿using Discord;
-using Discord.WebSocket;
+﻿using Discord.WebSocket;
 using e6PollerBot.Models;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -25,8 +25,6 @@ namespace e6PollerBot.Services
 
         private DiscordSocketClient _client;
 
-        private List<Subscription> _subscriptions = new List<Subscription>();
-
         public e6Service(HttpClient http, DiscordSocketClient client)
         {
             _http = http;
@@ -34,6 +32,7 @@ namespace e6PollerBot.Services
             _client = client;
         }
 
+        // Subscribe via Private Message / Direct Message (PM/DM)
         public async Task<bool> SubscribeIsPrivate(string searchQuery, ulong userId)
         {
             if (searchQuery.Count() >= _max_search_query_size) return false;
@@ -43,10 +42,15 @@ namespace e6PollerBot.Services
             subscription.IsPrivate = true;
             subscription.UserId = userId;
 
-            _subscriptions.Add(subscription);
+            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            {
+                await dbcontext.AddAsync<Subscription>(subscription);
+                await dbcontext.SaveChangesAsync();
+            }
             return true;
         }
 
+        // Subscribe via Guild Channel / Server Channel
         public async Task<bool> SubscribeNotPrivate(string searchQuery, ulong userId, ulong channelId, ulong guildId)
         {
             if (searchQuery.Count() >= _max_search_query_size) return false;
@@ -58,37 +62,26 @@ namespace e6PollerBot.Services
             subscription.ChannelId = channelId;
             subscription.GuildId = guildId;
 
-            _subscriptions.Add(subscription);
+            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            {
+                await dbcontext.AddAsync<Subscription>(subscription);
+                await dbcontext.SaveChangesAsync();
+            }
             return true;
         }
 
-        public async Task SendToSub(ulong userId)
-        {
-            foreach (Subscription subscription in _subscriptions)
-            {
-                if (userId == subscription.UserId)
-                {
-                    string replyString = $"Hello <@!{userId}>";
-                    if (subscription.IsPrivate)
-                    {
-                        IDMChannel channel = await _client.GetUser(userId).GetOrCreateDMChannelAsync();
-                        await channel.SendMessageAsync(replyString);
-                    }
-                    else
-                    {
-                        await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
-                    }
-                }
-            }
-        }
-
+        // Get all Subscriptions for a user.
         public async Task<List<string>> ListSubscriptions(ulong userId)
         {
-            ulong counter = 0;
+            ulong counter = 1;
             List<string> subs = new List<string>();
-            List<Subscription> subsriptions = _subscriptions.Where(s => s.UserId == userId).ToList();
+            List<Subscription> subscriptions;
+            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            {
+                subscriptions = await dbcontext.Subscriptions.Include(s1 => s1.e6PostSubscriptions).Where(s2 => s2.UserId == userId).OrderBy(s3 => s3.SubscriptionId).ToListAsync();
+            }
 
-            foreach (Subscription subscription in subsriptions)
+            foreach (Subscription subscription in subscriptions)
             {
                 string subscriptionInfo = $"{counter}.";
                 if (subscription.IsPrivate)
@@ -108,26 +101,42 @@ namespace e6PollerBot.Services
             return subs;
         }
 
+        // Delete a Subscription.
         public async Task<bool> DeleteSubscription(int sub_to_delete, ulong userId)
         {
-            List<Subscription> subs = _subscriptions.Where(s => s.UserId == userId).ToList();
-
-            if (sub_to_delete >= subs.Count())
+            if (sub_to_delete <= 0) return false;
+            sub_to_delete -= 1;
+            bool isSuccessful = true;
+            List<Subscription> subscriptions;
+            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
             {
-                return false;
+                subscriptions = await dbcontext.Subscriptions.Include(s1 => s1.e6PostSubscriptions).Where(s2 => s2.UserId == userId).OrderBy(s3 => s3.SubscriptionId).ToListAsync();
+                if (sub_to_delete >= subscriptions.Count())
+                {
+                    isSuccessful = false;
+                }
+                else
+                {
+                    try
+                    {
+                        dbcontext.Subscriptions.Remove(subscriptions[sub_to_delete]);
+                        await dbcontext.SaveChangesAsync();
+                    }
+                    catch (Exception)
+                    {
+                        isSuccessful = false;
+                    }
+                    isSuccessful = true;
+                }
             }
-            else
-            {
-                subs.RemoveAt(sub_to_delete);
-                return true;
-            }
+            return isSuccessful;
         }
 
         // Get a random picture from e6.
         public async Task<string> GetRandomPicture(string tags)
         {
             List<e6Post> e6Posts = await Querye6ByTag(tags, _random_limit);
-            List<string> ids = e6Posts.Select(x => x.id).ToList();
+            List<int> ids = e6Posts.Select(x => x.id).ToList();
             if (ids.Count() == 0) return "No posts matched your search.";
 
             int random_index = RandomThreadSafe.Next(0, ids.Count());

@@ -9,17 +9,21 @@ namespace e6PollerBot.Modules
     // Modules must be public and inherit from an IModuleBase
     public class PublicModule : ModuleBase<SocketCommandContext>
     {
+        private static readonly int _max_reply_list_lines = 5;
+
         // Dependency Injection will fill this value in for us
         public e6Service e6Service { get; set; }
 
         [Command("random", RunMode = RunMode.Async)]
+        [Alias("rand", "r")]
         public async Task Random([Remainder] string args = null)
         {
             string random_picture_data = await e6Service.GetRandomPicture(args);
             await ReplyAsync(random_picture_data);
         }
 
-        [Command("Subscribe")]
+        [Command("Subscribe", RunMode = RunMode.Async)]
+        [Alias("sub")]
         public async Task Subscribe([Remainder] string args = null)
         {
             bool isSuccessful;
@@ -35,21 +39,16 @@ namespace e6PollerBot.Modules
             
             if(isSuccessful)
             {
-                await ReplyAsync($"You have successfully subscribed with: user - <@!{Context.User.Id}>");
+                await ReplyAsync($"<@!{Context.User.Id}>, you have successfully subscribed with the Search Query: [{args}]");
             }
             else
             {
-                await ReplyAsync($"FAILED TO SUBSCRIBE with: user - <@!{Context.User.Id}>");
+                await ReplyAsync($"<@!{Context.User.Id}>, you have FAILED to subscribe with the Search Query: [{args}]");
             }
         }
 
-        [Command("SendToSub")]
-        public async Task PingSub([Remainder] string arg = null)
-        {
-            await e6Service.SendToSub(Context.User.Id);
-        }
-
-        [Command("ListSubscriptions")]
+        [Command("ListSubscriptions", RunMode = RunMode.Async)]
+        [Alias("list", "ls")]
         public async Task ListSubscriptions([Remainder] string args = null)
         {
             List<string> subs = await e6Service.ListSubscriptions(Context.User.Id);
@@ -60,7 +59,7 @@ namespace e6PollerBot.Modules
             {
                 replyString = $"{replyString}\n{sub}";
                 counter++;
-                if (counter >= 5)
+                if (counter >= _max_reply_list_lines)
                 {
                     await ReplyAsync(replyString);
                     replyString = "";
@@ -71,9 +70,15 @@ namespace e6PollerBot.Modules
             {
                 await ReplyAsync(replyString);
             }
+
+            if(subs.Count == 0)
+            {
+                await ReplyAsync("You have 0 Subscriptions.");
+            }
         }
 
-        [Command("DeleteSubscription")]
+        [Command("DeleteSubscription", RunMode = RunMode.Async)]
+        [Alias("unsub", "rm")]
         public async Task DeleteSubscription([Remainder] string args = null)
         {
             int sub_to_delete = 0;
@@ -82,7 +87,7 @@ namespace e6PollerBot.Modules
             {
                 sub_to_delete = Int32.Parse(args);
             }
-            catch(Exception e)
+            catch (Exception)
             {
                 successful_conversion = false;
             }
@@ -96,11 +101,11 @@ namespace e6PollerBot.Modules
             bool isSuccessful = await e6Service.DeleteSubscription(sub_to_delete: sub_to_delete, userId: Context.User.Id);
             if (isSuccessful)
             {
-                await ReplyAsync($"You have successfully deleted with index {sub_to_delete}: user - <@!{Context.User.Id}>");
+                await ReplyAsync($"<@!{Context.User.Id}>, you have successfully deleted Subscription Number [{sub_to_delete}]");
             }
             else
             {
-                await ReplyAsync($"FAILED TO DELETE with index {sub_to_delete}: user - <@!{Context.User.Id}>");
+                await ReplyAsync($"<@!{Context.User.Id}>, you have FAILED to delete Subscription Number [{sub_to_delete}]");
             }
         }
     }
