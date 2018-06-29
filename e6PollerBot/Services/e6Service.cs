@@ -2,6 +2,8 @@
 using Discord.WebSocket;
 using e6PollerBot.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -129,9 +131,21 @@ namespace e6PollerBot.Services
                 {
                     try
                     {
-                        subscriptions[sub_to_delete].IsActive = false;
-                        dbcontext.Subscriptions.Update(subscriptions[sub_to_delete]);
-                        await dbcontext.SaveChangesAsync();
+                        using (IDbContextTransaction dbContextTransaction = await dbcontext.Database.BeginTransactionAsync())
+                        {
+                            try
+                            {
+                                subscriptions[sub_to_delete].IsActive = false;
+                                dbcontext.Subscriptions.Update(subscriptions[sub_to_delete]);
+                                await dbcontext.SaveChangesAsync();
+                                dbContextTransaction.Commit();
+                            }
+                            catch(Exception e)
+                            {
+                                Console.WriteLine(e);
+                                dbContextTransaction.Rollback();
+                            }
+                        }
                     }
                     catch (Exception)
                     {
@@ -212,10 +226,26 @@ namespace e6PollerBot.Services
                             {
                                 List<e6Post> e6PostsRaw = await Querye6ByTag(subscription.SearchQuery, _query_limit);
                                 HashSet<int> e6PostIds = e6PostsRaw.Select(x => x.id).ToHashSet();
-                                subscription.e6Posts = e6PostIds;
-                                subscription.IsNew = false;
-                                dbcontext.Subscriptions.Update(subscription);
-                                await dbcontext.SaveChangesAsync();
+
+                                using (IDbContextTransaction dbContextTransaction = await dbcontext.Database.BeginTransactionAsync())
+                                {
+                                    try
+                                    {
+                                        Subscription tempSub = await dbcontext.Subscriptions.SingleOrDefaultAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+                                        PropertyValues propertyValues = await dbcontext.Entry(tempSub).GetDatabaseValuesAsync();
+                                        tempSub.IsActive = (bool)propertyValues["IsActive"];
+                                        tempSub.e6Posts = e6PostIds;
+                                        subscription.IsNew = false;
+                                        dbcontext.Subscriptions.Update(tempSub);
+                                        await dbcontext.SaveChangesAsync();
+                                        dbContextTransaction.Commit();
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e);
+                                        dbContextTransaction.Rollback();
+                                    }
+                                }
                             }
                             else
                             {
@@ -225,9 +255,24 @@ namespace e6PollerBot.Services
 
                                 await SendUpdates(subscription: subscription, newIds: newIds);
 
-                                subscription.e6Posts.UnionWith(newIds);
-                                dbcontext.Subscriptions.Update(subscription);
-                                await dbcontext.SaveChangesAsync();
+                                using (IDbContextTransaction dbContextTransaction = await dbcontext.Database.BeginTransactionAsync())
+                                {
+                                    try
+                                    {
+                                        Subscription tempSub = await dbcontext.Subscriptions.SingleOrDefaultAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+                                        PropertyValues propertyValues = await dbcontext.Entry(tempSub).GetDatabaseValuesAsync();
+                                        tempSub.IsActive = (bool) propertyValues["IsActive"];
+                                        tempSub.e6Posts.UnionWith(newIds);
+                                        dbcontext.Subscriptions.Update(tempSub);
+                                        await dbcontext.SaveChangesAsync();
+                                        dbContextTransaction.Commit();
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e);
+                                        dbContextTransaction.Rollback();
+                                    }
+                                }
                             }
                         }
                     }
@@ -245,14 +290,32 @@ namespace e6PollerBot.Services
 
         private async Task SendUpdates(Subscription subscription, IEnumerable<int> newIds)
         {
-            if (!newIds.Any()) return;
-            string replyString = $"Hello <@!{subscription.UserId}>! You have an Update for [{subscription.SearchQuery}]!";
-            int counter = 1;
-            foreach (int id in newIds)
+            try
             {
-                replyString = $"{replyString}\n{_e6_show_post_base_url}/{id}";
-                counter++;
-                if (counter >= _max_reply_list_lines)
+                if (!newIds.Any()) return;
+                string replyString = $"Hello <@!{subscription.UserId}>! You have an Update for [{subscription.SearchQuery}]!";
+                int counter = 1;
+                foreach (int id in newIds)
+                {
+                    replyString = $"{replyString}\n{_e6_show_post_base_url}/{id}";
+                    counter++;
+                    if (counter >= _max_reply_list_lines)
+                    {
+                        if (subscription.IsPrivate)
+                        {
+                            IDMChannel channel = await _client.GetUser(subscription.UserId).GetOrCreateDMChannelAsync();
+                            await channel.SendMessageAsync(replyString);
+                        }
+                        else
+                        {
+                            await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
+                        }
+                        replyString = "";
+                        counter = 0;
+                    }
+                }
+
+                if (!String.IsNullOrWhiteSpace(replyString))
                 {
                     if (subscription.IsPrivate)
                     {
@@ -263,22 +326,11 @@ namespace e6PollerBot.Services
                     {
                         await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
                     }
-                    replyString = "";
-                    counter = 0;
                 }
             }
-
-            if (!String.IsNullOrWhiteSpace(replyString))
+            catch(Exception e)
             {
-                if (subscription.IsPrivate)
-                {
-                    IDMChannel channel = await _client.GetUser(subscription.UserId).GetOrCreateDMChannelAsync();
-                    await channel.SendMessageAsync(replyString);
-                }
-                else
-                {
-                    await _client.GetGuild(subscription.GuildId).GetTextChannel(subscription.ChannelId).SendMessageAsync(replyString);
-                }
+                Console.WriteLine(e);
             }
         }
     }
