@@ -41,16 +41,20 @@ namespace e6PollerBot.Services
             // If the Prefix is wrong, don't process this message.
             if (!PrefixChecker(message, ref argPos)) return;
 
-            // Run the command.
+            // Get the Context of the message and broadcast the "typing" status until we're done.
             SocketCommandContext context = new SocketCommandContext(_client, message);
-            IResult result = await _commands.ExecuteAsync(context, argPos, _services);
+            using (IDisposable x = context.Channel.EnterTypingState())
+            {
+                // Run the command.
+                IResult result = await _commands.ExecuteAsync(context, argPos, _services);
 
-            // Log any and all failures.
-            if (!result.IsSuccess) Console.WriteLine(result.ErrorReason);
+                // Log any and all failures.
+                if (!result.IsSuccess) Console.WriteLine(result.ErrorReason);
 
-            // Send back Error Message if there is one, but do not send "Unknown Command" Error Messages.
-            if (result.Error.HasValue && result.Error.Value != CommandError.UnknownCommand)
-                await context.Channel.SendMessageAsync(result.ToString());
+                // Send back Error Message if there is one, but do not send "Unknown Command" Error Messages.
+                if (result.Error.HasValue && result.Error.Value != CommandError.UnknownCommand)
+                    await context.Channel.SendMessageAsync(result.ToString());
+            }
         }
 
         private bool PrefixChecker(SocketUserMessage message, ref int argPos)
