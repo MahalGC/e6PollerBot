@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  e6pollerbot:
+    image: ${DOCKER_REGISTRY}e6pollerbot
+    build:
+      context: .
+      dockerfile: e6PollerBot/Dockerfile
