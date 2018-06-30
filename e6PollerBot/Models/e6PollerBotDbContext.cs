@@ -3,9 +3,9 @@ using System;
 
 namespace e6PollerBot.Models
 {
-    public class PollerBotDbContext : DbContext
+    public class e6PollerBotDbContext : DbContext
     {
-        public DbSet<Subscription> Subscriptions { get; set; }
+        public DbSet<e6Subscription> e6Subscriptions { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {

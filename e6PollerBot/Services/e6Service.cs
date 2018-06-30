@@ -45,16 +45,16 @@ namespace e6PollerBot.Services
         {
             if (searchQuery.Count() > _max_search_query_character_size) return false;
 
-            Subscription subscription = new Subscription();
+            e6Subscription subscription = new e6Subscription();
             subscription.IsNew = true;
             subscription.IsActive = true;
             subscription.SearchQuery = searchQuery;
             subscription.IsPrivate = true;
             subscription.UserId = userId;
 
-            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            using (e6PollerBotDbContext dbcontext = new e6PollerBotDbContext())
             {
-                await dbcontext.AddAsync<Subscription>(subscription);
+                await dbcontext.AddAsync<e6Subscription>(subscription);
                 await dbcontext.SaveChangesAsync();
             }
             return true;
@@ -65,7 +65,7 @@ namespace e6PollerBot.Services
         {
             if (searchQuery.Count() > _max_search_query_character_size) return false;
 
-            Subscription subscription = new Subscription();
+            e6Subscription subscription = new e6Subscription();
             subscription.IsNew = true;
             subscription.IsActive = true;
             subscription.SearchQuery = searchQuery;
@@ -74,9 +74,9 @@ namespace e6PollerBot.Services
             subscription.ChannelId = channelId;
             subscription.GuildId = guildId;
 
-            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            using (e6PollerBotDbContext dbcontext = new e6PollerBotDbContext())
             {
-                await dbcontext.AddAsync<Subscription>(subscription);
+                await dbcontext.AddAsync<e6Subscription>(subscription);
                 await dbcontext.SaveChangesAsync();
             }
             return true;
@@ -87,13 +87,13 @@ namespace e6PollerBot.Services
         {
             ulong counter = 1;
             List<string> subs = new List<string>();
-            List<Subscription> subscriptions;
-            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            List<e6Subscription> subscriptions;
+            using (e6PollerBotDbContext dbcontext = new e6PollerBotDbContext())
             {
-                subscriptions = await dbcontext.Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.SubscriptionId).ToListAsync();
+                subscriptions = await dbcontext.e6Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.e6SubscriptionId).ToListAsync();
             }
 
-            foreach (Subscription subscription in subscriptions)
+            foreach (e6Subscription subscription in subscriptions)
             {
                 string subscriptionInfo = $"{counter}.";
                 if (subscription.IsPrivate)
@@ -119,10 +119,10 @@ namespace e6PollerBot.Services
             if (sub_to_delete <= 0) return false;
             sub_to_delete -= 1;
             bool isSuccessful = true;
-            List<Subscription> subscriptions;
-            using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+            List<e6Subscription> subscriptions;
+            using (e6PollerBotDbContext dbcontext = new e6PollerBotDbContext())
             {
-                subscriptions = await dbcontext.Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.SubscriptionId).ToListAsync();
+                subscriptions = await dbcontext.e6Subscriptions.Where(s => s.UserId == userId).Where(s => s.IsActive == true).OrderBy(s => s.e6SubscriptionId).ToListAsync();
                 if (sub_to_delete >= subscriptions.Count())
                 {
                     isSuccessful = false;
@@ -136,7 +136,7 @@ namespace e6PollerBot.Services
                             try
                             {
                                 subscriptions[sub_to_delete].IsActive = false;
-                                dbcontext.Subscriptions.Update(subscriptions[sub_to_delete]);
+                                dbcontext.e6Subscriptions.Update(subscriptions[sub_to_delete]);
                                 await dbcontext.SaveChangesAsync();
                                 dbContextTransaction.Commit();
                             }
@@ -216,11 +216,11 @@ namespace e6PollerBot.Services
             {
                 try
                 {
-                    using (PollerBotDbContext dbcontext = new PollerBotDbContext())
+                    using (e6PollerBotDbContext dbcontext = new e6PollerBotDbContext())
                     {
-                        List<Subscription> subscriptions = await dbcontext.Subscriptions.Where(s => s.IsActive == true).ToListAsync();
+                        List<e6Subscription> subscriptions = await dbcontext.e6Subscriptions.Where(s => s.IsActive == true).ToListAsync();
 
-                        foreach(Subscription subscription in subscriptions)
+                        foreach(e6Subscription subscription in subscriptions)
                         {
                             if (subscription.IsNew)
                             {
@@ -231,12 +231,12 @@ namespace e6PollerBot.Services
                                 {
                                     try
                                     {
-                                        Subscription tempSub = await dbcontext.Subscriptions.SingleOrDefaultAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+                                        e6Subscription tempSub = await dbcontext.e6Subscriptions.SingleOrDefaultAsync(s => s.e6SubscriptionId == subscription.e6SubscriptionId);
                                         PropertyValues propertyValues = await dbcontext.Entry(tempSub).GetDatabaseValuesAsync();
                                         tempSub.IsActive = (bool)propertyValues["IsActive"];
                                         tempSub.e6Posts = e6PostIds;
                                         subscription.IsNew = false;
-                                        dbcontext.Subscriptions.Update(tempSub);
+                                        dbcontext.e6Subscriptions.Update(tempSub);
                                         await dbcontext.SaveChangesAsync();
                                         dbContextTransaction.Commit();
                                     }
@@ -259,11 +259,11 @@ namespace e6PollerBot.Services
                                 {
                                     try
                                     {
-                                        Subscription tempSub = await dbcontext.Subscriptions.SingleOrDefaultAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+                                        e6Subscription tempSub = await dbcontext.e6Subscriptions.SingleOrDefaultAsync(s => s.e6SubscriptionId == subscription.e6SubscriptionId);
                                         PropertyValues propertyValues = await dbcontext.Entry(tempSub).GetDatabaseValuesAsync();
                                         tempSub.IsActive = (bool) propertyValues["IsActive"];
                                         tempSub.e6Posts.UnionWith(newIds);
-                                        dbcontext.Subscriptions.Update(tempSub);
+                                        dbcontext.e6Subscriptions.Update(tempSub);
                                         await dbcontext.SaveChangesAsync();
                                         dbContextTransaction.Commit();
                                     }
@@ -288,7 +288,7 @@ namespace e6PollerBot.Services
             }
         }
 
-        private async Task SendUpdates(Subscription subscription, IEnumerable<int> newIds)
+        private async Task SendUpdates(e6Subscription subscription, IEnumerable<int> newIds)
         {
             try
             {

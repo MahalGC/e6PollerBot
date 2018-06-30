@@ -7,10 +7,10 @@ using System.Linq;
 
 namespace e6PollerBot.Models
 {
-    public class Subscription
+    public class e6Subscription
     {
         [Key]
-        public int SubscriptionId { get; set; }
+        public int e6SubscriptionId { get; set; }
 
         public bool IsActive { get; set; }
         public bool IsNew { get; set; }
