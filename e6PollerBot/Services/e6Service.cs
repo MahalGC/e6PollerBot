@@ -182,10 +182,8 @@ namespace e6PollerBot.Services
         // GET from e6 API.
         private async Task<List<e6Post>> Gete6(string url)
         {
-            await e6Throttle();
-
             List<e6Post> e6Posts;
-            using (Stream s = await _http.GetStreamAsync(url))
+            using (Stream s = await e6GetStreamAsync(url))
             using (StreamReader sr = new StreamReader(s))
             using (JsonReader reader = new JsonTextReader(sr))
             {
@@ -195,18 +193,28 @@ namespace e6PollerBot.Services
             return e6Posts;
         }
 
-        // Any calls to the e6 API should be throttled.
-        private async Task e6Throttle()
+        // Returns a Stream from the given e6 URL. 
+        // The caller must Dispose of this Stream.
+        // This method takes care of Throttling, to ensure that no more than 1 call per second
+        // is made to the e6 servers.
+        private async Task<Stream> e6GetStreamAsync(string url)
         {
-            await _e6_throttle_guard.WaitAsync().ConfigureAwait(false);
+            Stream s = null;
             try
             {
-                await Task.Delay(_throttle_timing);
+                await _e6_throttle_guard.WaitAsync().ConfigureAwait(false);
+                s = await _http.GetStreamAsync(url);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
             }
             finally
             {
+                await Task.Delay(_throttle_timing);
                 _e6_throttle_guard.Release();
             }
+            return s;
         }
 
         // Poll e6 Periodically.
@@ -283,7 +291,7 @@ namespace e6PollerBot.Services
                 }
                 finally
                 {
-                    Thread.Sleep(_poller_thread_latency);
+                    await Task.Delay(_poller_thread_latency);
                 }
             }
         }
