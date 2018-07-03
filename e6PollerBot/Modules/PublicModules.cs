@@ -1,4 +1,5 @@
-﻿using Discord.Commands;
+﻿using Discord;
+using Discord.Commands;
 using e6PollerBot.Services;
 using System;
 using System.Collections.Generic;
@@ -79,7 +80,7 @@ namespace e6PollerBot.Modules
         }
 
         [Command("DeleteSubscription", RunMode = RunMode.Async)]
-        [Alias("unsub", "rm")]
+        [Alias("unsubscribe", "unsub", "rm")]
         public async Task DeleteSubscription([Remainder] string args = null)
         {
             int sub_to_delete = 0;
@@ -108,6 +109,18 @@ namespace e6PollerBot.Modules
             {
                 await ReplyAsync($"<@!{Context.User.Id}>, you have FAILED to delete Subscription Number [{sub_to_delete}]");
             }
+        }
+
+        [Command("Help")]
+        public async Task Help([Remainder] string args = null)
+        {
+            EmbedBuilder builder = new EmbedBuilder();
+
+            builder.AddField("random/r SEARCH", "Search for a random picture associated with the SEARCH.");
+            builder.AddField("subscribe/sub SEARCH", "Subscribe to a particular SEARCH, and get new posts as they come in on e6. These updates will be given in the channel where the Subscription was created.");
+            builder.AddField("list/ls", "List all current Subscriptions and their NUMBERS.");
+            builder.AddField("unsubscribe/unsub NUMBER", "Unsubscribe from a particular Subscription. The NUMBER is the number of the Subscription when calling list/ls.");
+            await ReplyAsync("", false, builder.Build());
         }
     }
 }

@@ -27,6 +27,8 @@ namespace e6PollerBot
             await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN"));
             await client.StartAsync();
 
+            await client.SetGameAsync(Environment.GetEnvironmentVariable("GAME_STATUS"));
+
             // Register all other Services.
             await services.GetRequiredService<CommandHandlingService>().InitializeAsync();
 
