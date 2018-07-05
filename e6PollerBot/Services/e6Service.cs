@@ -301,7 +301,7 @@ namespace e6PollerBot.Services
             try
             {
                 if (!newIds.Any()) return;
-                string replyString = $"Hello @here! <@!{subscription.UserId}> has a Subscription Update for [{subscription.SearchQuery}]!";
+                string replyString = $"Hello! <@!{subscription.UserId}> has a Subscription Update for [{subscription.SearchQuery}]!";
                 int counter = 1;
                 foreach (int id in newIds)
                 {
